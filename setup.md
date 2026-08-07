@@ -358,6 +358,58 @@ first, before assuming the `winrt` crash bug has resurfaced — check
 `daemon.log` for the actual failure signature (see below) to tell the two
 apart quickly.
 
+## Battery drain investigation and wake-on-usage feature (2026-08-07)
+
+User reported the device's battery draining faster than expected. Investigated
+by reading the actual firmware source (not guessing) — findings, most
+actionable first:
+
+- **Brightness is already runtime-adjustable, no reflash needed.** The middle
+  (PWR) button on the usage screen cycles a 4-step ramp — `64 → 128 → 200 →
+  255` (`firmware/src/brightness.cpp`), persisted to NVS. Default is `200`
+  (~78%). Since this is a true AMOLED panel (emissive, no backlight),
+  brightness is the single biggest lever over display power draw — cycling it
+  down is the cheapest fix available today.
+- **`IDLE_SLEEP_WHEN_CHARGING = false`** (`firmware/src/idle_cfg.h`): while USB
+  power is present, the device never dims — any VBUS presence counts as
+  continuous activity. Only relevant if it's kept on a USB cable while also
+  expecting it to sleep.
+- **`IDLE_TIMEOUT_MS = 30 min`**: screen fades to black after 30 min of no
+  activity. Compile-time constant, needs a reflash to change.
+- **The real gap (unaddressed, architectural)**: `idle.cpp` only fades
+  *display brightness* to 0. It does **not** touch the CPU or BLE radio at
+  all — the main loop runs unconditionally every 5ms (~200Hz, no CPU frequency
+  scaling, no FreeRTOS light-sleep) and the BLE connection interval is
+  hardcoded fast (15–30ms, **zero slave latency** —
+  `MYNEWT_VAL_BLE_SVC_GAP_PPCP_*` in `firmware/platformio.ini`) for HID-key
+  responsiveness, regardless of screen state. So the device's power floor
+  (CPU + BLE fully active) never drops even with the screen fully black. This
+  is genuinely not implemented anywhere in the codebase today — fixing it
+  would mean renegotiating BLE connection parameters (and/or enabling
+  light-sleep) when `idle_is_asleep()` is true, and reverting on wake. **Not
+  done in this session** — flag this as the highest-impact remaining battery
+  improvement if it's worth the firmware work later.
+
+**Implemented this session**: the screen previously only woke/stayed awake on
+physical button/touch activity (`idle_consume_wake_press()`) — it would dim
+after 30 min even while Claude was actively being used, since nothing tied
+screen wake state to actual usage. `usage_rate_group()` already classifies
+usage into Idle/Normal/Active/Heavy for splash-animation selection, but needs
+~4 min of ring-buffer history before it reports anything but Idle, and stays
+Idle during genuinely-active-but-light chatting — not a good fit for "should
+the screen be awake right now."
+
+**Fix** (`firmware/src/main.cpp`, committed as `ca2d63b`): track the raw
+`session_pct` delta between successful ~60s BLE polls. Any change calls
+`idle_note_activity()`, waking/keeping the screen awake on the very next poll
+after real usage — no warm-up lag, and it also naturally treats the first
+successful poll after boot as activity (via a `-1.0f` sentinel). Button/touch
+wake is unchanged and still works independently — both trigger paths coexist.
+
+**Verified on hardware**: screen wakes on real Claude usage without a physical
+touch, and still fades to black after 30 min of no usage change and no touch,
+as before.
+
 ## If you're starting fresh after a reboot that didn't work
 
 1. Check whether the tray icon is present at all (bottom-right notification
