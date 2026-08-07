@@ -47,9 +47,10 @@ def _command(tray_script: str | None = None) -> str:
     The base pythonw loads in-process and is genuinely windowless.
 
     The path is never hard-coded (D-08, CLAUDE.md "repoint ExecStart" lesson);
-    both paths are quoted for space safety.  tray_windows.py adds the venv's
-    site-packages to sys.path itself, so the venv's deps still resolve under the
-    base interpreter.
+    both paths are quoted for space safety.  tray_windows.py detects it is
+    running under this base interpreter and re-execs itself into the venv's
+    own python.exe (CREATE_NO_WINDOW, so still windowless) before touching any
+    venv dependency — see the re-exec block at the top of tray_windows.main().
 
     Args:
         tray_script: absolute path to the tray entry script.  Defaults to this

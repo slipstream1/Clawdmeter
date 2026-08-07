@@ -31,16 +31,6 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-# Autostart launches us with the BASE interpreter's pythonw.exe, not the venv's
-# (see autostart_windows._command — the venv pythonw redirector pops a console
-# window). The base interpreter does NOT see the venv's site-packages, so add
-# them here to resolve pystray/bleak/PIL. os.path.isdir guards the no-venv and
-# already-inside-venv cases; site.addsitedir is a no-op on a missing dir anyway.
-_VENV_SITE = os.path.join(_REPO_ROOT, ".venv", "Lib", "site-packages")
-if os.path.isdir(_VENV_SITE):
-    import site
-    site.addsitedir(_VENV_SITE)
-
 # ---------------------------------------------------------------------------
 # TrayState — thread-safe scalar bridge (loop -> tray)
 # ---------------------------------------------------------------------------
@@ -167,6 +157,39 @@ def main() -> None:
     so the module can be imported on a GTK-less Linux dev box for unit tests
     of the pure helpers (TrayState, header_text) without pystray failing.
     """
+    # Autostart launches us with the BASE interpreter's pythonw.exe, not the
+    # venv's (see autostart_windows._command — the venv's own pythonw.exe is a
+    # redirector stub that respawns the console python.exe as a child and pops
+    # a window, a documented CPython venv-launcher bug). Injecting the venv's
+    # site-packages onto the base interpreter via site.addsitedir() looked like
+    # an equivalent fix but is NOT: winrt's compiled multi-distribution
+    # submodule `winrt.windows.foundation.collections` reliably raises a
+    # spurious ModuleNotFoundError under base-python + addsitedir, even though
+    # `.venv\Scripts\python.exe -c "import winrt.windows.foundation.collections"`
+    # succeeds standalone every time (confirmed empirically). Re-exec into the
+    # venv's own python.exe — CREATE_NO_WINDOW keeps it windowless despite
+    # python.exe being a console-subsystem binary — sidesteps the bug by giving
+    # winrt the exact interpreter environment it was proven to work under.
+    #
+    # This MUST run before the single-instance mutex below: this base-process
+    # invocation is just a launcher and has to exit without ever acquiring the
+    # lock, leaving it free for the re-exec'd (venv) instance to take.
+    venv_python = os.path.join(_REPO_ROOT, ".venv", "Scripts", "python.exe")
+    if sys.platform == "win32" and os.path.isfile(venv_python) and (
+        os.path.normcase(os.path.abspath(sys.executable))
+        != os.path.normcase(os.path.abspath(venv_python))
+    ):
+        import subprocess
+        subprocess.Popen(
+            [venv_python, os.path.abspath(__file__)],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
     # Single-instance guard FIRST — before icons, the daemon thread, or any BLE
     # work. If another tray already owns the session mutex (e.g. ARSO restored a
     # console instance and the headless autostart also fired), exit silently.
