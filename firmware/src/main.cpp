@@ -373,6 +373,20 @@ void loop() {
 
     if (ble_has_data()) {
         if (parse_json(ble_get_data(), &usage)) {
+            // Wake/keep-awake on real Claude usage, not just button/touch
+            // presses (idle_consume_wake_press() above still owns those).
+            // Raw delta rather than usage_rate_group(): the smoothed rate
+            // group needs ~4 min of history before it reports anything but
+            // Idle, and stays Idle during genuinely-active-but-light chatting
+            // — this reacts on the very next ~60s poll instead, and the
+            // sentinel naturally treats the first successful poll after boot
+            // as activity too.
+            static float last_activity_pct = -1.0f;
+            if (usage.session_pct != last_activity_pct) {
+                last_activity_pct = usage.session_pct;
+                idle_note_activity();
+            }
+
             int g_before = usage_rate_group();
             bool session_reset = usage_rate_sample(usage.session_pct);
             int g_after = usage_rate_group();
