@@ -261,3 +261,44 @@ Bash daemon (`daemon/claude-usage-daemon.sh`) reads OAuth token, polls Anthropic
 - `...0002` RX — daemon writes JSON usage payload here.
 - `...0003` TX — firmware notifies ack/nack (daemon doesn't subscribe).
 - `...0004` REQ — firmware fires `0x01` notify in `onSubscribe` if `has_received_data` is false. Daemon subscribes via `setsid bash -c "stdbuf -oL dbus-monitor … | awk …"`; awk drops a flag file the inner loop picks up. See the `feedback_dbus_monitor_pipe` memory for the three subtle gotchas (pipe buffering, busctl-exits race, `wait` blocking on pipeline jobs).
+
+## Fork maintenance
+
+This is a personal fork, not the upstream project — `git remote -v` shows
+`origin` → `https://github.com/slipstream1/Clawdmeter.git` (push target) and
+`upstream` → `https://github.com/HermannBjorgvin/Clawdmeter.git` (pull source,
+where active development happens). Commits are authored as
+`slipstream1 <13150108+slipstream1@users.noreply.github.com>` (repo-local
+`user.name`/`user.email`), not the user's work identity — never `--global`.
+
+**Syncing with upstream:**
+1. `git fetch upstream && git rebase upstream/main` (rebase, not merge — keeps
+   history linear; this repo's local commits so far have always rebased
+   clean since they touch daemon/docs files upstream doesn't).
+2. Build every board env the changeset plausibly touches
+   (`pio run -d firmware -e <env>`) before calling it done — don't assume a
+   clean rebase means it still compiles.
+3. Hand the push back to the user (see below) — `git push --force-with-lease
+   origin main` if the rebase rewrote history, plain `git push` otherwise.
+
+**Claude's Bash tool cannot push, and cannot read or write `git
+config`/`git remote` here** — non-interactive Bash has no working GitHub
+credential helper (`git push` fails with "could not read Username"), and the
+permission classifier hard-blocks config/remote commands outright (retrying
+an identical blocked call just fails again — it's not a pending approval).
+Do the local work — fetch, rebase, build-verify — then give the user the
+exact command to run in their own terminal.
+
+**This is a public repo.** Before committing anything derived from this
+machine (setup notes, pasted logs, troubleshooting docs) scan for personal
+identifiers — Windows/WSL usernames, real name, work email, device hardware
+IDs (e.g. a BLE MAC) — and redact them, the same way secrets/tokens get
+scanned for. Do this unprompted, before the first commit, not after.
+
+**Windows-native daemon** (repo symlinked `C:\Users\...\Clawdmeter` →
+`D:\code\Clawdmeter`, credentials read from WSL's `claude login` over a
+`\\wsl.localhost\...` UNC path via `CLAUDE_CREDENTIALS_PATH`, the
+`winrt`/venv-re-exec autostart fix, tray/autostart troubleshooting) is fully
+documented in `setup.md` at the repo root — read that first for anything
+involving the Windows daemon, tray icon, or autostart rather than
+re-deriving it from scratch.
