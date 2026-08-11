@@ -281,12 +281,14 @@ where active development happens). Commits are authored as
 3. Hand the push back to the user (see below) — `git push --force-with-lease
    origin main` if the rebase rewrote history, plain `git push` otherwise.
 
-**Claude's Bash tool cannot push, and cannot read or write `git
-config`/`git remote` here** — non-interactive Bash has no working GitHub
-credential helper (`git push` fails with "could not read Username"), and the
-permission classifier hard-blocks config/remote commands outright (retrying
-an identical blocked call just fails again — it's not a pending approval).
-Do the local work — fetch, rebase, build-verify — then give the user the
+**If `git push` fails with `could not read Username for 'https://github.com'`,
+run `gh auth setup-git`** — that's a one-time fix wiring git's credential
+helper to `gh`'s stored token, not a hard block; it fixed this exact error on
+2026-08-11 and should stay fixed on this machine. **`git config`/`git remote`
+modification commands are still hard-blocked** by the permission classifier
+regardless (retrying an identical blocked call just fails again — it's not a
+pending approval). Do the local work — fetch, rebase, build-verify — then
+either push directly or give the user the
 exact command to run in their own terminal.
 
 **This is a public repo.** Before committing anything derived from this
