@@ -507,6 +507,71 @@ After any firmware reflash or daemon dependency change, re-verify by checking
 `daemon.log` for a fresh `Connected` + `Sending: {...,"ok":true}` line, same as
 the post-reboot check above — don't just assume the pull worked.
 
+## BLE connection wedge after the device sits powered off for days (2026-08-17)
+
+**Symptom:** tray icon shows "scanning", the device is bonded in Windows
+(`Get-PnpDevice -Class Bluetooth` shows `Status: OK`, `ConfigManagerErrorCode:
+CM_PROB_NONE`), the firmware is alive and responsive (`./screenshot.sh`
+returns a full frame over serial), but `daemon.log`
+(`C:\Users\<winuser>\AppData\Local\Clawdmeter\daemon.log`) loops
+`Connection attempt N/3 failed: TimeoutError` indefinitely — for over an hour
+in the observed case — never recovering on its own.
+
+**Trigger:** the device had been powered off for several days, then powered
+back on.
+
+**Fix:** kill the `tray_windows.py` processes and relaunch (either via the
+tray's own restart, or manually):
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*tray_windows.py*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Process -FilePath "C:\Python314\pythonw.exe" `
+    -ArgumentList '"C:\Users\<winuser>\code\Clawdmeter\daemon\tray_windows.py"'
+```
+Connected and sending within seconds of the fresh process starting. The
+likely mechanism is a stale WinRT BLE session left over in the long-lived
+process from before the device went away — this is **inferred, not proven**;
+what's solid is the before/after (a plain restart clears it every time it's
+been tried). It does not self-recover on its own; a manual restart is
+currently the only known remedy. If this recurs often, the daemon's own
+reconnect loop could in principle detect "N consecutive full reconnect
+cycles failed" and self-restart the process — not implemented.
+
+**A red herring to not chase again:** `tray_windows.py` always shows up as
+**two** OS processes in a parent→child chain
+(`Get-CimInstance Win32_Process | Where-Object CommandLine -like
+'*tray_windows.py*'`). This is normal, not a bug — the venv's `python.exe` on
+Windows is itself a launcher stub that hands off to a real interpreter as a
+child process, and only the child actually runs the script. Proof: a totally
+unrelated one-liner through the same venv
+(`.venv\Scripts\python.exe -c "import time; time.sleep(3)"`) also shows up as
+two processes. Tell them apart with `Get-Process -Id <pid> | Select
+Threads,HandleCount,CPU`: the stub is ~1 thread / ~50 handles / ~0s CPU; the
+real daemon has 8+ threads, thousands of handles (WinRT/COM), and
+accumulating CPU. Do not "fix" the re-exec check in `tray_windows.py` over
+this — it was checked in detail this session and is correct as written for
+the actual autostart launch path (base `pythonw.exe` → `Popen` into the venv);
+an apparent path mismatch only showed up when testing `sys.executable`
+resolution by invoking the venv python directly from a shell, a different
+invocation path than the daemon ever uses in production.
+
+**Diagnostic commands that actually worked, for next time:**
+- From WSL, PowerShell needs the **full path**
+  (`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`, since
+  `powershell.exe` alone isn't on WSL's `$PATH`) and the script should be a
+  `.ps1` file passed via `-File "$(wslpath -w script.ps1)"` — inline
+  `-Command "..."` gets mangled by bash eating `$_` and `$env:` before
+  PowerShell ever sees them, which produced a false "NO LOG FILE" result
+  before switching to script files.
+- `usbipd.exe attach --wsl --busid <id>` is needed again after any WSL
+  restart even if the device was already `bind`-persisted — `bind` survives
+  reboots, `attach` doesn't (same gotcha as the original USB passthrough
+  setup, resurfaces any time `/dev/ttyACM0` goes missing mid-session).
+- `Get-CimInstance Win32_Process | Select ProcessId,ParentProcessId,CommandLine`
+  (not `Get-Process`) is what's needed to see the parent→child relationship
+  above — `Get-Process` alone doesn't expose `ParentProcessId` or the full
+  command line.
+
 ## Key reference paths
 
 | What | Path |
