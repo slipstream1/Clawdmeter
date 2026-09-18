@@ -281,6 +281,17 @@ where active development happens). Commits are authored as
 3. Hand the push back to the user (see below) — `git push --force-with-lease
    origin main` if the rebase rewrote history, plain `git push` otherwise.
 
+**Owned hardware:** the user only has `waveshare_amoled_216` (S3, 2.16") on
+this machine. When surveying upstream commits for "improvements worth
+pulling," call out fixes/features scoped to other board envs (e.g. the C6
+2.16 rotation/orientation fixes) as not affecting the user's actual hardware —
+still fine to rebase in to keep the fork current, but don't frame them as
+fixing something broken for them. **Never flash a board env without
+confirming which physical board is plugged in first** — a chip-mismatch error
+from `esptool` (`This chip is ESP32-S3, not ESP32-C6` or vice versa) means the
+env doesn't match what's connected, not that the build is broken. Default to
+flashing only `waveshare_amoled_216` unless the user says otherwise.
+
 **If `git push` fails with `could not read Username for 'https://github.com'`,
 run `gh auth setup-git`** — that's a one-time fix wiring git's credential
 helper to `gh`'s stored token, not a hard block; it fixed this exact error on
