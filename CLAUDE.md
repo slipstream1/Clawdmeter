@@ -198,6 +198,16 @@ from `esptool` (`This chip is ESP32-S3, not ESP32-C6` or vice versa) means the
 env doesn't match what's connected, not that the build is broken. Default to
 flashing only `waveshare_amoled_216` unless the user says otherwise.
 
+**Owned daemon:** this machine runs the **Windows-native daemon**
+(`daemon/claude_usage_daemon_windows.py`, tray app via `install-windows.ps1`)
+— see "Windows-native daemon" below. BLE doesn't work under WSL2, so the
+Linux Bash daemon (`daemon/claude-usage-daemon.sh`, `systemctl --user ...`)
+and its `poll_interval`/heartbeat config are **not installed or used here**.
+Before recommending a daemon-side upstream fix, check which daemon file it
+actually touches (`claude-usage-daemon.sh` = Linux/Bash, not applicable;
+`claude_usage_daemon.py` = macOS; `claude_usage_daemon_windows.py` = this
+machine) and don't suggest a `systemctl --user` restart.
+
 **If `git push` fails with `could not read Username for 'https://github.com'`,
 run `gh auth setup-git`** — that's a one-time fix wiring git's credential
 helper to `gh`'s stored token, not a hard block; it fixed this exact error on
