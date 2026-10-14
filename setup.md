@@ -1,5 +1,14 @@
 # Clawdmeter setup session — status as of 2026-08-07
 
+> **Superseded 2026-10-14 by the v2.0.0 upgrade.** Upstream v2.0.0 deleted
+> the Python daemons (`daemon/claude_usage_daemon_windows.py`,
+> `tray_windows.py`, `autostart_windows.py`) and replaced them with a Rust
+> desktop app. Everything below about the Python tray, its venv,
+> `CLAUDE_CREDENTIALS_PATH`, the `winrt` autostart fix, and `usbipd`-based
+> flashing is **historical**. The BLE-wedge and hardware sections may still
+> hold. The current setup is in
+> "v2.0.0 desktop app with WSL-only Claude Code (2026-10-14)" near the end.
+
 **RESOLVED as of 2026-08-07 06:47.** Everything below "What's done and
 confirmed working" plus "Bug found, root-caused, and fixed" is now fully
 verified end-to-end, including a real overnight shutdown/power-on cycle. See
@@ -572,6 +581,50 @@ invocation path than the daemon ever uses in production.
   above — `Get-Process` alone doesn't expose `ParentProcessId` or the full
   command line.
 
+## v2.0.0 desktop app with WSL-only Claude Code (2026-10-14)
+
+The v2 app (`desktop/`, Rust) runs natively on Windows: tray, usage polling,
+BLE, Claude Code hook install, and firmware flashing. Claude Code itself still
+runs **only in WSL**. Bridging the two takes four manual fixes, all verified
+working on 2026-10-14:
+
+1. **Launch crash — `TaskDialogIndirect` entry point not found.** The v2.0.0
+   Windows exe has no embedded manifest (`desktop/crates/clawdmeter-app/build.rs`
+   only embeds the icon), so Windows loads the old `comctl32.dll`. Fix: put a
+   side-by-side `clawdmeter.exe.manifest` next to the exe requesting
+   `Microsoft.Windows.Common-Controls` 6.0.0.0, then **update the exe's
+   modified time** (`touch` from WSL). Without the touch, Windows keeps its
+   cached "no manifest" result and the error persists. Upstream issue: none
+   filed as of 2026-10-14. A reinstall or upgrade may need this redone.
+2. **Credentials and hooks point at WSL.** The app dropped
+   `CLAUDE_CREDENTIALS_PATH`. Instead, `%LOCALAPPDATA%\Clawdmeter\config` sets
+   `config_dirs = \\wsl.localhost\Ubuntu\home\<wsluser>\.claude`. That one
+   setting covers the token read and where hooks are installed. Without it the
+   app silently uses a dormant native `C:\Users\<winuser>\.claude` with an
+   expired token.
+3. **`claude` CLI via WSL.** Same config file:
+   `claude_path = C:\Users\<winuser>\clawd-claude.cmd`, a wrapper containing
+   `"%SystemRoot%\System32\wsl.exe" -d Ubuntu -e /home/<wsluser>/.local/bin/claude %*`.
+   Use the absolute path: a bare `wsl.exe -e claude` doesn't have
+   `~/.local/bin` on its `PATH`. Verified: `/usage` through the wrapper returns
+   live usage.
+4. **Hook command path.** The app's Hooks tab writes
+   `"C:/Users/<winuser>/AppData/Local/Programs/Clawdmeter/clawdmeter.exe" hook ...`
+   into WSL's `~/.claude/settings.json`, which WSL can't run. Rewrite it to
+   `/mnt/c/Users/<winuser>/AppData/Local/Programs/Clawdmeter/clawdmeter.exe hook ...`
+   (WSL runs Windows `.exe` files directly). Verified: a test alert from WSL
+   reached the device. **Clicking Install/Repair in the Hooks tab again
+   reverts this.** It leaves other hooks intact.
+
+Also done: Settings → disable legacy service. The `Run\Clawdmeter` value now
+launches `clawdmeter.exe`, and the old Python tray no longer autostarts.
+Before that, "device has no Clawdmeter RX characteristic" just meant the old
+tray still held the BLE link. Both programs use the same Bluetooth service IDs.
+
+Firmware can now be flashed from the app's Device tab, natively from Windows,
+with the board plugged into Windows rather than attached to WSL. This replaces
+the `usbipd` steps in "Manual firmware flashing (WSL2)" above.
+
 ## Key reference paths
 
 | What | Path |
@@ -581,9 +634,12 @@ invocation path than the daemon ever uses in production.
 | Repo (WSL view) | `/mnt/d/code/Clawdmeter` |
 | Git `origin` (your fork) | `https://github.com/slipstream1/Clawdmeter.git` |
 | Git `upstream` (original project) | `https://github.com/HermannBjorgvin/Clawdmeter.git` |
-| Venv | `<repo>\.venv` (Python 3.14.3, `C:\Python314\python.exe` base) |
-| Daemon log | `C:\Users\<winuser>\AppData\Local\Clawdmeter\daemon.log` |
+| v2 app exe | `C:\Users\<winuser>\AppData\Local\Programs\Clawdmeter\clawdmeter.exe` (+ `clawdmeter.exe.manifest`) |
+| v2 app config | `C:\Users\<winuser>\AppData\Local\Clawdmeter\config` (`config_dirs`, `claude_path`) |
+| WSL `claude` wrapper | `C:\Users\<winuser>\clawd-claude.cmd` |
+| Daemon log (v2 app, same file as before) | `C:\Users\<winuser>\AppData\Local\Clawdmeter\daemon.log` |
 | WSL Claude credentials | `/home/<wsluser>/.claude/.credentials.json` |
-| Windows env var pointing at it | `CLAUDE_CREDENTIALS_PATH` = `\\wsl.localhost\Ubuntu\home\<wsluser>\.claude\.credentials.json` |
+| Venv (pre-v2, unused) | `<repo>\.venv` (Python 3.14.3, `C:\Python314\python.exe` base) |
+| `CLAUDE_CREDENTIALS_PATH` (pre-v2, ignored by the v2 app) | `\\wsl.localhost\Ubuntu\home\<wsluser>\.claude\.credentials.json` |
 | Bonded device BLE address | `<BONDED_MAC>` |
 | Autostart registry value | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Clawdmeter` |

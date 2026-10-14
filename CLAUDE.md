@@ -179,8 +179,10 @@ where active development happens). Commits are authored as
 
 **Syncing with upstream:**
 1. `git fetch upstream && git rebase upstream/main` (rebase, not merge — keeps
-   history linear; this repo's local commits so far have always rebased
-   clean since they touch daemon/docs files upstream doesn't).
+   history linear). Since the v2.0.0 rebase (2026-10-14) the fork carries
+   **only docs** (this section + `setup.md`) on top of upstream — no code. Expect
+   conflicts only in `CLAUDE.md` when upstream rewrites it; keep upstream's
+   body and re-append this section.
 2. Build every board env the changeset plausibly touches
    (`pio run -d firmware -e <env>`) before calling it done — don't assume a
    clean rebase means it still compiles.
@@ -198,15 +200,15 @@ from `esptool` (`This chip is ESP32-S3, not ESP32-C6` or vice versa) means the
 env doesn't match what's connected, not that the build is broken. Default to
 flashing only `waveshare_amoled_216` unless the user says otherwise.
 
-**Owned daemon:** this machine runs the **Windows-native daemon**
-(`daemon/claude_usage_daemon_windows.py`, tray app via `install-windows.ps1`)
-— see "Windows-native daemon" below. BLE doesn't work under WSL2, so the
-Linux Bash daemon (`daemon/claude-usage-daemon.sh`, `systemctl --user ...`)
-and its `poll_interval`/heartbeat config are **not installed or used here**.
-Before recommending a daemon-side upstream fix, check which daemon file it
-actually touches (`claude-usage-daemon.sh` = Linux/Bash, not applicable;
-`claude_usage_daemon.py` = macOS; `claude_usage_daemon_windows.py` = this
-machine) and don't suggest a `systemctl --user` restart.
+**Owned host app:** this machine runs the **v2 Rust desktop app natively on
+Windows** (installed from the release `.msi`, not built from `desktop/`),
+while Claude Code itself runs **only in WSL**. BLE doesn't work under WSL2,
+which is why the split exists. The old Python daemons are gone as of v2.0.0
+(2026-10-14); never suggest `systemctl --user`, `install-windows.ps1`, or
+`CLAUDE_CREDENTIALS_PATH` here. Upstream changes under `desktop/` only reach
+this machine via a new release installer, not via rebase. Changes to how the
+app finds credentials, runs `claude`, or writes hook commands can break the
+WSL bridge described below — check those specifically.
 
 **If `git push` fails with `could not read Username for 'https://github.com'`,
 run `gh auth setup-git`** — that's a one-time fix wiring git's credential
@@ -224,10 +226,12 @@ identifiers — Windows/WSL usernames, real name, work email, device hardware
 IDs (e.g. a BLE MAC) — and redact them, the same way secrets/tokens get
 scanned for. Do this unprompted, before the first commit, not after.
 
-**Windows-native daemon** (repo symlinked `C:\Users\...\Clawdmeter` →
-`D:\code\Clawdmeter`, credentials read from WSL's `claude login` over a
-`\\wsl.localhost\...` UNC path via `CLAUDE_CREDENTIALS_PATH`, the
-`winrt`/venv-re-exec autostart fix, tray/autostart troubleshooting) is fully
-documented in `setup.md` at the repo root — read that first for anything
-involving the Windows daemon, tray icon, or autostart rather than
-re-deriving it from scratch.
+**WSL bridge for the v2 app** (repo symlinked `C:\Users\...\Clawdmeter` →
+`D:\code\Clawdmeter`; `config_dirs` pointed at WSL's `~/.claude` over
+`\\wsl.localhost\...`; a `claude_path` wrapper that runs WSL's `claude` via
+`wsl.exe`; hook commands rewritten from `C:/...` to `/mnt/c/...`; a
+side-by-side manifest fixing the v2.0.0 `TaskDialogIndirect` launch crash) is
+documented in `setup.md` → "v2.0.0 desktop app with WSL-only Claude Code".
+Read that first for anything involving the tray, autostart, hooks, or
+flashing. Firmware is now flashed from the app's Device tab, natively on
+Windows; `usbipd` is only needed for flashing a local build from WSL.
