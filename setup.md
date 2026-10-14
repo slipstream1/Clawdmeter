@@ -603,11 +603,22 @@ working on 2026-10-14:
    app silently uses a dormant native `C:\Users\<winuser>\.claude` with an
    expired token.
 3. **`claude` CLI via WSL.** Same config file:
-   `claude_path = C:\Users\<winuser>\clawd-claude.cmd`, a wrapper containing
-   `"%SystemRoot%\System32\wsl.exe" -d Ubuntu -e /home/<wsluser>/.local/bin/claude %*`.
-   Use the absolute path: a bare `wsl.exe -e claude` doesn't have
-   `~/.local/bin` on its `PATH`. Verified: `/usage` through the wrapper returns
-   live usage.
+   `claude_path = C:\Users\<winuser>\clawd-wrapper\clawd-claude.exe`, a small
+   C# program (source `clawd-claude.cs` alongside it, built with Windows'
+   built-in `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`). It
+   re-quotes each argument and runs
+   `wsl.exe -d Ubuntu -e /home/<wsluser>/.local/bin/claude <args>`. Use the
+   absolute path: a bare `wsl.exe -e claude` doesn't have `~/.local/bin` on
+   its `PATH`.
+   - **Don't use a `.cmd` wrapper.** The first attempt (`wsl.exe ... %*` in a
+     `.cmd`) handled `/usage`. But it mangled the Haiku check's
+     `--settings '{"disableAllHooks":true,...}'` and empty `--tools ""`
+     arguments, so the log showed `probe missed (... Settings file not found ...)`
+     and the app fell back to the usage endpoint.
+   - Verified 2026-10-14: `argv-test.exe` (same folder) launches the wrapper
+     with Windows-style quoting, as the app does, and all 16 probe-style
+     arguments arrive intact, including the empty one and the JSON. `/usage`
+     through the `.exe` returns live usage.
 4. **Hook command path.** The app's Hooks tab writes
    `"C:/Users/<winuser>/AppData/Local/Programs/Clawdmeter/clawdmeter.exe" hook ...`
    into WSL's `~/.claude/settings.json`, which WSL can't run. Rewrite it to
@@ -623,7 +634,22 @@ tray still held the BLE link. Both programs use the same Bluetooth service IDs.
 
 Firmware can now be flashed from the app's Device tab, natively from Windows,
 with the board plugged into Windows rather than attached to WSL. This replaces
-the `usbipd` steps in "Manual firmware flashing (WSL2)" above.
+the `usbipd` steps in "Manual firmware flashing (WSL2)" above. Done 2026-10-14:
+the device then reported `v2.0.0` and reconnected with its BLE bond intact. If
+the app says "waiting for USB" and `usbipd list` shows
+`Unknown USB Device (Device Descriptor Request Failed)`, the cable or port is
+at fault. Plugging directly into the PC, not the monitor/dock, fixed it.
+
+**Known cosmetic bug — console windows flash.** The Settings screen reloads
+from about 10 places (`desktop/crates/clawdmeter-app/src/ui/settings.rs:206`).
+Each reload runs Windows `reg.exe` 2–3 times to check autostart entries
+(`clawdmeter-core/src/autostart.rs:215, 319`; also `platform.rs:29` at
+startup). Those calls don't set `CREATE_NO_WINDOW`, unlike the app's `claude`
+calls (`usage.rs:677-682`), so each one flashes a console. It's harmless, and
+fixing it needs an upstream change. **Don't** put a stand-in `reg.exe` next to
+`clawdmeter.exe` to hide it: Claude Code's permission system blocks that as
+binary-hijack persistence, and on a managed laptop it could set off endpoint
+security alerts.
 
 ## Key reference paths
 
@@ -636,7 +662,7 @@ the `usbipd` steps in "Manual firmware flashing (WSL2)" above.
 | Git `upstream` (original project) | `https://github.com/HermannBjorgvin/Clawdmeter.git` |
 | v2 app exe | `C:\Users\<winuser>\AppData\Local\Programs\Clawdmeter\clawdmeter.exe` (+ `clawdmeter.exe.manifest`) |
 | v2 app config | `C:\Users\<winuser>\AppData\Local\Clawdmeter\config` (`config_dirs`, `claude_path`) |
-| WSL `claude` wrapper | `C:\Users\<winuser>\clawd-claude.cmd` |
+| WSL `claude` wrapper | `C:\Users\<winuser>\clawd-wrapper\clawd-claude.exe` (+ `clawd-claude.cs`, `argv-test.exe`); old `clawd-claude.cmd` is unused |
 | Daemon log (v2 app, same file as before) | `C:\Users\<winuser>\AppData\Local\Clawdmeter\daemon.log` |
 | WSL Claude credentials | `/home/<wsluser>/.claude/.credentials.json` |
 | Venv (pre-v2, unused) | `<repo>\.venv` (Python 3.14.3, `C:\Python314\python.exe` base) |

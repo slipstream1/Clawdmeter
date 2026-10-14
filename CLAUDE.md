@@ -228,9 +228,10 @@ scanned for. Do this unprompted, before the first commit, not after.
 
 **WSL bridge for the v2 app** (repo symlinked `C:\Users\...\Clawdmeter` →
 `D:\code\Clawdmeter`; `config_dirs` pointed at WSL's `~/.claude` over
-`\\wsl.localhost\...`; a `claude_path` wrapper that runs WSL's `claude` via
-`wsl.exe`; hook commands rewritten from `C:/...` to `/mnt/c/...`; a
-side-by-side manifest fixing the v2.0.0 `TaskDialogIndirect` launch crash) is
+`\\wsl.localhost\...`; a `claude_path` wrapper `.exe` — not `.cmd`, which
+mangles arguments — that runs WSL's `claude` via `wsl.exe`; hook commands
+rewritten from `C:/...` to `/mnt/c/...`; a side-by-side manifest fixing the
+v2.0.0 `TaskDialogIndirect` launch crash; the known console-flash bug) is
 documented in `setup.md` → "v2.0.0 desktop app with WSL-only Claude Code".
 Read that first for anything involving the tray, autostart, hooks, or
 flashing. Firmware is now flashed from the app's Device tab, natively on
