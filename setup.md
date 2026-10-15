@@ -596,6 +596,9 @@ working on 2026-10-14:
    modified time** (`touch` from WSL). Without the touch, Windows keeps its
    cached "no manifest" result and the error persists. Upstream issue: none
    filed as of 2026-10-14. A reinstall or upgrade may need this redone.
+   **Superseded 2026-10-15:** upstream fixed this in v2.0.1 (#207), which
+   embeds the manifest in the exe. After installing v2.1.0, the exe contains it,
+   so the side-by-side file was deleted. Nothing to redo on upgrades.
 2. **Credentials and hooks point at WSL.** The app dropped
    `CLAUDE_CREDENTIALS_PATH`. Instead, `%LOCALAPPDATA%\Clawdmeter\config` sets
    `config_dirs = \\wsl.localhost\Ubuntu\home\<wsluser>\.claude`. That one
@@ -660,7 +663,7 @@ security alerts.
 | Repo (WSL view) | `/mnt/d/code/Clawdmeter` |
 | Git `origin` (your fork) | `https://github.com/slipstream1/Clawdmeter.git` |
 | Git `upstream` (original project) | `https://github.com/HermannBjorgvin/Clawdmeter.git` |
-| v2 app exe | `C:\Users\<winuser>\AppData\Local\Programs\Clawdmeter\clawdmeter.exe` (+ `clawdmeter.exe.manifest`) |
+| v2 app exe | `C:\Users\<winuser>\AppData\Local\Programs\Clawdmeter\clawdmeter.exe` (manifest embedded since v2.0.1) |
 | v2 app config | `C:\Users\<winuser>\AppData\Local\Clawdmeter\config` (`config_dirs`, `claude_path`) |
 | WSL `claude` wrapper | `C:\Users\<winuser>\clawd-wrapper\clawd-claude.exe` (+ `clawd-claude.cs`, `argv-test.exe`); old `clawd-claude.cmd` is unused |
 | Daemon log (v2 app, same file as before) | `C:\Users\<winuser>\AppData\Local\Clawdmeter\daemon.log` |
