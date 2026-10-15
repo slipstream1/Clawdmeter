@@ -643,13 +643,25 @@ the app says "waiting for USB" and `usbipd list` shows
 `Unknown USB Device (Device Descriptor Request Failed)`, the cable or port is
 at fault. Plugging directly into the PC, not the monitor/dock, fixed it.
 
-**Known cosmetic bug — console windows flash.** The Settings screen reloads
-from about 10 places (`desktop/crates/clawdmeter-app/src/ui/settings.rs:206`).
-Each reload runs Windows `reg.exe` 2–3 times to check autostart entries
-(`clawdmeter-core/src/autostart.rs:215, 319`; also `platform.rs:29` at
-startup). Those calls don't set `CREATE_NO_WINDOW`, unlike the app's `claude`
-calls (`usage.rs:677-682`), so each one flashes a console. It's harmless, and
-fixing it needs an upstream change. **Don't** put a stand-in `reg.exe` next to
+**Known bug — console windows flash and clicks lag.** Traced at v2.1.0 on
+2026-10-15. The app window's timer ticks every 500 ms (`ui/mod.rs:36`
+`REFRESH`), and every 6th tick, i.e. every 3 s, reloads the Settings view
+(`desktop/crates/clawdmeter-app/src/ui/settings.rs:245`). This runs **on
+GPUI's main thread** (`settings.rs:118-121`). Each reload runs Windows
+`reg.exe` 4 times: `is_enabled`, `is_stale` (which calls `is_enabled` and
+`entry_exe`), and `legacy_entry` (`settings.rs:231-237`,
+`clawdmeter-core/src/autostart.rs:280-318, 369`). It also reads
+`settings.json` over `\\wsl.localhost` to check the hooks (`settings.rs:226`
+→ `hooks/install.rs:494`). Those `reg` calls don't set `CREATE_NO_WINDOW`,
+unlike the app's `claude` calls (`usage.rs:677-682`), so each one opens a
+console window. Measured from Windows: each `reg` run takes 15–60 ms and each
+read over `\\wsl.localhost` 20–70 ms, plus the console window each time. That's
+an estimated 100–400 ms freeze every 3 s, during which clicks wait; the
+console windows may also take focus. Usage updates and the device are
+unaffected, since they run in the background tray process. The fix needs an
+upstream change: hide the `reg` windows and move the reload off the main
+thread. No upstream issue existed as of 2026-10-15, and the user chose to
+live with it. **Don't** put a stand-in `reg.exe` next to
 `clawdmeter.exe` to hide it: Claude Code's permission system blocks that as
 binary-hijack persistence, and on a managed laptop it could set off endpoint
 security alerts.
