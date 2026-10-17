@@ -661,7 +661,16 @@ console windows may also take focus. Usage updates and the device are
 unaffected, since they run in the background tray process. The fix needs an
 upstream change: hide the `reg` windows and move the reload off the main
 thread. No upstream issue existed as of 2026-10-15, and the user chose to
-live with it. **Don't** put a stand-in `reg.exe` next to
+live with it.
+**Update 2026-10-17 (v2.2.1):** another user filed upstream issue #228 with
+the same diagnosis, and #229 fixed the console windows. Every `reg` call, and
+`platform.rs`'s host queries, now go through
+`autostart::no_console()` (`CREATE_NO_WINDOW`). v2.2.1 is installed on this
+machine, and its app and firmware were verified healthy. **Still true:** the
+3-second Settings reload still runs on GPUI's main thread (`settings.rs`
+`tick`/`reload` unchanged), with 4 `reg` runs and one read over
+`\\wsl.localhost`. It's now cheaper, but brief pauses may remain. Not measured
+after the fix. **Don't** put a stand-in `reg.exe` next to
 `clawdmeter.exe` to hide it: Claude Code's permission system blocks that as
 binary-hijack persistence, and on a managed laptop it could set off endpoint
 security alerts.
